@@ -29,7 +29,7 @@ while True:
 
             dominant_emotion = result[0]['dominant_emotion']
             dominant_gender = result[0]['dominant_gender']
-            dominant_age = str(result[0]['age']-10)
+            dominant_age = str(result[0]['age'])
 
         except Exception as e:
             print("Error in DeepFace:", e)
