@@ -1,66 +1,92 @@
 import cv2
-import numpy as np
+import mediapipe as mp
 
-# Load YOLOv3 model and config files
-net = cv2.dnn.readNet("yolov3.weights", "yolov3.cfg")
+# Initialize MediaPipe Pose
+mp_pose = mp.solutions.pose
+pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
+mp_drawing = mp.solutions.drawing_utils
 
-# Load COCO dataset labels (YOLOv3 is trained on this dataset)
-with open("coco.names", "r") as f:
-    classes = [line.strip() for line in f.readlines()]
+# Initialize webcam
+cap = cv2.VideoCapture(0)
 
-# Get the index of 'book' class from COCO dataset
-book_class_id = classes.index('book')
+def classify_pose(landmarks):
+    # Extract required landmarks
+    left_wrist = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value]
+    right_wrist = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value]
+    left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value]
+    right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value]
+    left_hip = landmarks[mp_pose.PoseLandmark.LEFT_HIP.value]
+    right_hip = landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value]
+    left_knee = landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value]
+    right_knee = landmarks[mp_pose.PoseLandmark.RIGHT_KNEE.value]
+    left_ankle = landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value]
+    right_ankle = landmarks[mp_pose.PoseLandmark.RIGHT_ANKLE.value]
 
-# Get the output layers of the YOLO model
-layer_names = net.getLayerNames()
-output_layers = [layer_names[i - 1] for i in net.getUnconnectedOutLayers()]
+    # Calculate average positions
+    avg_shoulder_y = (left_shoulder.y + right_shoulder.y) / 2
+    avg_hip_y = (left_hip.y + right_hip.y) / 2
+    avg_knee_y = (left_knee.y + right_knee.y) / 2
 
-# Load the input image or video
-cap = cv2.VideoCapture(0)  # Use 0 for webcam or replace with file path
+    # Define movement rules
+    # Hands Up
+    if left_wrist.y < avg_shoulder_y and right_wrist.y < avg_shoulder_y:
+        return "Hands Up"
 
-while True:
+    # Hands Down
+    if left_wrist.y > avg_hip_y and right_wrist.y > avg_hip_y:
+        return "Hands Down"
+
+    # Leg Up (Left or Right Knee higher than Hip)
+    if left_knee.y < left_hip.y:
+        return "Left Leg Up"
+    if right_knee.y < right_hip.y:
+        return "Right Leg Up"
+
+    # Sitting (Knees near hips)
+    if abs(avg_hip_y - avg_knee_y) < 0.1:
+        return "Sitting"
+
+    # Standing (Default)
+    return "Standing"
+
+while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
         break
 
-    # Prepare the image for YOLO
-    blob = cv2.dnn.blobFromImage(frame, 1/255.0, (416, 416), swapRB=True, crop=False)
-    net.setInput(blob)
-    outputs = net.forward(output_layers)
+    # Convert the frame to RGB
+    image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    image.flags.writeable = False
 
-    height, width, _ = frame.shape
-    boxes, confidences, class_ids = [], [], []
+    # Process pose detection
+    results = pose.process(image)
 
-    # Process each detection
-    for output in outputs:
-        for detection in output:
-            scores = detection[5:]
-            class_id = np.argmax(scores)
-            confidence = scores[class_id]
+    # Convert back to BGR for OpenCV
+    image.flags.writeable = True
+    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
-            # Filter for 'book' detection with confidence threshold
-            if class_id == book_class_id and confidence > 0.5:
-                center_x, center_y, w, h = (detection[0:4] * np.array([width, height, width, height])).astype('int')
-                x, y = int(center_x - w / 2), int(center_y - h / 2)
-                boxes.append([x, y, int(w), int(h)])
-                confidences.append(float(confidence))
-                class_ids.append(class_id)
+    # Draw landmarks and classify pose
+    if results.pose_landmarks:
+        mp_drawing.draw_landmarks(
+            image,
+            results.pose_landmarks,
+            mp_pose.POSE_CONNECTIONS,
+            mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=2),
+            mp_drawing.DrawingSpec(color=(0, 0, 255), thickness=2, circle_radius=2)
+        )
 
-    # Apply Non-Maximum Suppression to remove duplicate boxes
-    indexes = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.4)
+        # Classify the current pose
+        label = classify_pose(results.pose_landmarks.landmark)
 
-    # Draw bounding boxes
-    for i in indexes.flatten():
-        x, y, w, h = boxes[i]
-        label = str(classes[class_ids[i]])
-        confidence = confidences[i]
-        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-        cv2.putText(frame, f"{label}: {confidence:.2f}", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        # Display the classification result
+        cv2.putText(image, label, (20, 50),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3, cv2.LINE_AA)
 
-    # Display the result
-    cv2.imshow("Book Detection", frame)
+    # Show the frame
+    cv2.imshow('Pose Classification', image)
 
-    if cv2.waitKey(1) == ord('q'):
+    # Exit on 'q'
+    if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
 cap.release()
