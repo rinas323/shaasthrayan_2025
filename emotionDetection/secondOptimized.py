@@ -1,4 +1,5 @@
 import cv2
+
 from deepface import DeepFace
 import time
 
@@ -32,14 +33,15 @@ while True:
             # Update age and gender every 15 seconds
             if current_time - last_age_gender_update > age_gender_interval:
                 result = DeepFace.analyze(
+                
                     small_frame,
-                    actions=['emotion', 'gender', 'age'],
+                    actions=['emotion', 'age'],
                     enforce_detection=False,
                     detector_backend='opencv'
                 )
                 dominant_gender = result[0]['dominant_gender']
                 dominant_age = str(result[0]['age'])
-                dominant_emotion = result[0]['dominant_emotion']
+                #dominant_emotion = result[0]['dominant_emotion']
                 last_age_gender_update = current_time  # Reset timer
 
             else:
@@ -57,7 +59,7 @@ while True:
 
     # Display results on the frame
     cv2.putText(frame, f"Emotion: {dominant_emotion}", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-    cv2.putText(frame, f"Gender: {dominant_gender}", (50, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    #qcv2.putText(frame, f"Gender: {dominant_gender}", (50, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
     cv2.putText(frame, f"Age: {dominant_age}", (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
     # Show the frame
